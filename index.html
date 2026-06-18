@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Advanced finance and investment projection calculator" />
+  <title>Advanced Finance Calculator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] }
+        }
+      }
+    };
+  </script>
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.3.1",
+        "react-dom": "https://esm.sh/react-dom@18.3.1",
+        "react-dom/client": "https://esm.sh/react-dom@18.3.1/client"
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    @media print {
+      @page { size: A4 landscape; margin: 10mm; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-type="module" data-presets="react">
+import React, { useState, useMemo, useEffect, useRef } from 'https://esm.sh/react@18.3.1';
+import { createPortal } from 'https://esm.sh/react-dom@18.3.1';
+import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
+import { 
+  ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, 
+  CartesianGrid, Tooltip as RechartsTooltip, Legend 
+} from 'https://esm.sh/recharts@2.15.4?external=react,react-dom';
+import { 
+  Settings, TrendingUp, Wallet, Plus, Trash2, Info, X,
+  ChevronDown, ChevronLeft, ChevronRight, Activity, CalendarDays, ArrowUpRight, Calculator, PieChart, Printer, FileText, User
+} from 'https://esm.sh/lucide-react@0.468.0?external=react';
+
+// --- Utility Functions ---
+const formatCurrency = (value) => 
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
+
+const formatNumber = (value) => 
+  new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(value);
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// --- UI Components ---
+
+// Custom Mobile-Friendly Popover for Info Buttons
+const PopoverInfo = ({ content, position = 'top', iconSize = 14, iconClass = "text-gray-400" }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const buttonRef = useRef(null);
+  const popoverRef = useRef(null);
+
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      
+      // Clamp left position to prevent bleeding off screen edges on mobile
+      let left = rect.left + rect.width / 2;
+      const popoverWidth = 256; // Approx w-64 (16rem = 256px)
+      const halfWidth = popoverWidth / 2;
+      const edgePadding = 16;
+      
+      if (left - halfWidth < edgePadding) {
+        left = halfWidth + edgePadding;
+      } else if (left + halfWidth > window.innerWidth - edgePadding) {
+        left = window.innerWidth - halfWidth - edgePadding;
+      }
+
+      if (position === 'bottom') {
+        setCoords({ top: rect.bottom + 8, left: left });
+      } else {
+        setCoords({ top: rect.top - 8, left: left });
+      }
+
+      const handleScroll = (e) => {
+        // Allow scrolling inside the popover itself without closing
+        if (popoverRef.current && popoverRef.current.contains(e.target)) return;
+        setIsOpen(false);
+      };
+
+      const handleClickOutside = (event) => {
+        if (popoverRef.current && !popoverRef.current.contains(event.target) &&
+            buttonRef.current && !buttonRef.current.contains(event.target)) {
+          setIsOpen(false);
+        }
+      };
+
+      // Use capture phase for scroll to catch any inner element scrolling
+      window.addEventListener('scroll', handleScroll, true);
+      window.addEventListener('resize', handleScroll);
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+
+      return () => {
+        window.removeEventListener('scroll', handleScroll, true);
+        window.removeEventListener('resize', handleScroll);
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('touchstart', handleClickOutside);
+      };
+    }
+  }, [isOpen, position]);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsOpen(!isOpen); }}
+        className={`${iconClass} hover:text-blue-500 focus:outline-none transition-colors p-1 -m-1 rounded-full relative`}
+        aria-label="More info"
+      >
+        <Info size={iconSize} />
+      </button>
+      {isOpen && createPortal(
+        <div 
+          ref={popoverRef}
+          className="fixed w-64 p-3.5 bg-gray-900/95 backdrop-blur-md text-white text-xs rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] z-[99999] font-normal normal-case tracking-normal text-left whitespace-normal leading-relaxed animate-in fade-in zoom-in-95 duration-200"
+          style={{ 
+            top: `${coords.top}px`, 
+            left: `${coords.left}px`,
+            transform: `translate(-50%, ${position === 'top' ? '-100%' : '0'})`,
+            maxWidth: '90vw'
+          }}
+        >
+          <div className="flex justify-between items-start gap-3">
+            <span className="flex-1">{content}</span>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} 
+              className="text-gray-400 hover:text-white p-1 -m-1 flex-shrink-0 bg-gray-800 rounded-full transition-colors"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
+
+const Card = ({ children, className = '' }) => (
+  <div className={`bg-white/80 backdrop-blur-xl border border-gray-200/80 shadow-sm rounded-3xl p-6 ${className}`}>
+    {children}
+  </div>
+);
+
+const Label = ({ children, tooltip }) => (
+  <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-gray-700">
+    {children}
+    {tooltip && <PopoverInfo content={tooltip} position="top" />}
+  </div>
+);
+
+// --- Custom Grid Year Picker ---
+const YearPicker = ({ value, onChange, icon: Icon, className = '' }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [view, setView] = useState('decades'); // 'decades' | 'years'
+  const [activeDecade, setActiveDecade] = useState(2020);
+
+  const decades = [1970, 1980, 1990, 2000, 2010, 2020, 2030, 2040];
+
+  // Handle outside click
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (isOpen && !e.target.closest('.year-picker-container')) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isOpen]);
+
+  const handleOpen = () => {
+    if (!isOpen) {
+      const safeValue = value || new Date().getFullYear();
+      const decade = Math.floor(safeValue / 10) * 10;
+      setActiveDecade(Math.max(1970, Math.min(2040, decade)));
+      setView('decades'); // First show decades
+    }
+    setIsOpen(!isOpen);
+  };
+
+  const selectDecade = (decade) => {
+    setActiveDecade(decade);
+    setView('years'); // Then show actual years
+  };
+
+  const selectYear = (year) => {
+    onChange(year);
+    setIsOpen(false);
+  };
+
+  const yearsInDecade = Array.from({ length: 10 })
+    .map((_, i) => activeDecade + i)
+    .filter(y => y >= 1970 && y <= 2040); // Cap at 2040
+
+  return (
+    <div className={`relative year-picker-container w-full ${className}`}>
+      {Icon && <Icon className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />}
+      <button
+        type="button"
+        onClick={handleOpen}
+        className={`w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between p-3 transition-all outline-none shadow-sm
+          ${Icon ? 'pl-9' : 'pl-4'} pr-4`}
+      >
+        <span className="text-base font-medium">{value || 'Select Year'}</span>
+        <ChevronDown size={16} className={`text-gray-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-[100] mt-2 w-64 bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] p-4 left-0 origin-top-left">
+          {view === 'decades' ? (
+            <div className="animate-in fade-in zoom-in-95 duration-200">
+              <div className="text-center font-bold text-gray-800 mb-4 text-sm tracking-wide uppercase">Select Decade</div>
+              <div className="grid grid-cols-2 gap-2.5">
+                {decades.map(d => (
+                  <button
+                    key={d}
+                    onClick={() => selectDecade(d)}
+                    className={`py-2.5 px-2 rounded-xl text-sm font-semibold transition-all duration-200
+                      ${Math.floor((value || 0)/10)*10 === d ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'bg-gray-50 text-gray-700 hover:bg-gray-100 hover:scale-[1.02]'}`}
+                  >
+                    {d}-{d+9}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="animate-in slide-in-from-right-4 fade-in duration-200">
+              <div className="flex items-center justify-between mb-4">
+                <button onClick={() => setView('decades')} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors">
+                  <ChevronLeft size={18} />
+                </button>
+                <span className="font-bold text-gray-800 text-sm cursor-pointer hover:text-blue-600 transition-colors" onClick={() => setView('decades')}>
+                  {activeDecade}s
+                </span>
+                <div className="w-7" />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {yearsInDecade.map(yr => (
+                  <button
+                    key={yr}
+                    onClick={() => selectYear(yr)}
+                    className={`py-2.5 px-1 rounded-xl text-sm font-semibold transition-all duration-200
+                      ${value === yr ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20' : 'bg-gray-50 text-gray-700 hover:bg-gray-100 hover:scale-[1.05]'}`}
+                  >
+                    {yr}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const NumberInput = ({ value, onChange, icon: Icon, prefix, suffix, className = '', ...props }) => {
+  const [displayValue, setDisplayValue] = useState(value ? value.toLocaleString('en-US') : '');
+
+  useEffect(() => {
+    if (value !== undefined && value !== null) {
+      const parsedDisplay = parseFloat(displayValue.replace(/,/g, ''));
+      if (parsedDisplay !== value) {
+        setDisplayValue(value.toLocaleString('en-US'));
+      }
+    }
+  }, [value]);
+
+  const handleBlur = () => {
+    if (value !== undefined && value !== null) {
+      setDisplayValue(value.toLocaleString('en-US'));
+    }
+  };
+
+  const handleChange = (e) => {
+    const rawValue = e.target.value.replace(/,/g, '');
+    if (rawValue === '') {
+      setDisplayValue('');
+      onChange(0);
+      return;
+    }
+    if (/^-?\d*\.?\d*$/.test(rawValue)) {
+      setDisplayValue(e.target.value);
+      const num = parseFloat(rawValue);
+      if (!isNaN(num)) onChange(num);
+    }
+  };
+
+  // Dynamically increase padding if the text inside the prefix/suffix is long (like "Year" or "years")
+  const paddingLeft = Icon ? 'pl-10' : prefix ? (String(prefix).length > 2 ? 'pl-16' : 'pl-9') : 'pl-4';
+  const paddingRight = suffix ? (String(suffix).length > 2 ? 'pr-20' : 'pr-10') : 'pr-4';
+
+  return (
+    <div className={`relative flex items-center ${className}`}>
+      {Icon && <Icon className="absolute left-3.5 text-gray-400" size={18} />}
+      {prefix && <span className="absolute left-3.5 text-gray-500 font-medium z-10">{prefix}</span>}
+      <input
+        type="text"
+        value={displayValue}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className={`w-full bg-gray-50 border border-gray-200 text-gray-900 text-base rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-3 transition-all outline-none shadow-sm
+          ${paddingLeft}
+          ${paddingRight}
+        `}
+        {...props}
+      />
+      {suffix && <span className="absolute right-4 text-gray-500 font-medium">{suffix}</span>}
+    </div>
+  );
+};
+
+const TextInput = ({ value, onChange, placeholder }) => (
+  <input
+    type="text"
+    value={value}
+    onChange={e => onChange(e.target.value)}
+    placeholder={placeholder}
+    className="w-full bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-2.5 outline-none shadow-sm transition-all"
+  />
+);
+
+const Toggle = ({ enabled, onChange, label, description }) => (
+  <label className="flex items-start cursor-pointer justify-between w-full p-4 bg-gray-50/50 rounded-2xl border border-gray-100 hover:bg-gray-50 transition-colors group">
+    <div className="flex flex-col gap-1 pr-4">
+      <span className="text-sm font-semibold text-gray-800">{label}</span>
+      {description && <span className="text-xs text-gray-500">{description}</span>}
+    </div>
+    <div className="relative mt-0.5">
+      <input type="checkbox" className="sr-only" checked={enabled} onChange={(e) => onChange(e.target.checked)} />
+      <div className={`block w-12 h-7 rounded-full transition-colors duration-300 ease-in-out ${enabled ? 'bg-blue-500' : 'bg-gray-200 group-hover:bg-gray-300'}`}></div>
+      <div className={`absolute left-1 top-1 bg-white w-5 h-5 rounded-full transition-transform duration-300 ease-in-out shadow-sm ${enabled ? 'translate-x-5' : ''}`}></div>
+    </div>
+  </label>
+);
+
+const SegmentedControl = ({ options, value, onChange }) => (
+  <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner w-full">
+    {options.map((opt) => (
+      <button
+        key={opt.value}
+        onClick={() => onChange(opt.value)}
+        className={`flex-1 text-xs font-semibold py-1.5 px-3 rounded-lg transition-all duration-200 ${
+          value === opt.value 
+            ? 'bg-white shadow-sm text-gray-900' 
+            : 'text-gray-500 hover:text-gray-700'
+        }`}
+      >
+        {opt.label}
+      </button>
+    ))}
+  </div>
+);
+
+// --- Main Application ---
+function FinanceCalculator() {
+  // --- State: Core Parameters ---
+  const [startYear, setStartYear] = useState(2026);
+  const [initialCapital, setInitialCapital] = useState(50000);
+  const [totalYears, setTotalYears] = useState(30);
+  const [baseReturnRate, setBaseReturnRate] = useState(8);
+  const [compoundingFrequency, setCompoundingFrequency] = useState('yearly'); // 'yearly' | 'monthly'
+  const [expandedYear, setExpandedYear] = useState(null);
+  const [isCardsScrolled, setIsCardsScrolled] = useState(false);
+
+  // Print States
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printDetails, setPrintDetails] = useState({ author: '', date: new Date().toISOString().split('T')[0], comments: '' });
+
+  const handlePrintSubmit = () => {
+    setShowPrintModal(false);
+    setExpandedYear('ALL');
+    // Allow React time to render expanded tables before triggering print dialog
+    setTimeout(() => {
+      window.print();
+      setExpandedYear(null);
+    }, 500);
+  };
+
+  // Auto-collapse monthly breakdowns if user switches back to yearly
+  useEffect(() => {
+    if (compoundingFrequency === 'yearly' && expandedYear !== 'ALL') {
+      setExpandedYear(null);
+    }
+  }, [compoundingFrequency, expandedYear]);
+
+  // Contributions
+  const [annualContribution, setAnnualContribution] = useState(12000);
+  const [contributionYears, setContributionYears] = useState(20);
+  const [contributionGrowth, setContributionGrowth] = useState(0);
+  const [contributionGrowthType, setContributionGrowthType] = useState('percent'); // 'percent' | 'amount'
+
+  // --- State: Advanced Toggles ---
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [enableInflation, setEnableInflation] = useState(false);
+  const [enableZakat, setEnableZakat] = useState(false);
+  const [enableWithdrawal, setEnableWithdrawal] = useState(false);
+  const [enableMultiAsset, setEnableMultiAsset] = useState(false);
+  const [enableEvents, setEnableEvents] = useState(false);
+
+  // --- State: Advanced Settings ---
+  const [inflationRate, setInflationRate] = useState(3);
+  const [zakatRate, setZakatRate] = useState(2.5);
+  
+  const [withdrawalType, setWithdrawalType] = useState('percent'); 
+  const [withdrawalValue, setWithdrawalValue] = useState(4); 
+  const [withdrawalTimingType, setWithdrawalTimingType] = useState('index');
+  const [withdrawalStartYearIndex, setWithdrawalStartYearIndex] = useState(21);
+  const [withdrawalStartCalYear, setWithdrawalStartCalYear] = useState(2046);
+  
+  const [portfolio, setPortfolio] = useState([
+    { id: 1, name: 'US Stocks', allocation: 70, returnRate: 10 },
+    { id: 2, name: 'Bonds', allocation: 30, returnRate: 4 },
+  ]);
+
+  const [events, setEvents] = useState([
+    { id: 1, timingType: 'index', yearIndex: 5, calendarYear: 2030, type: 'inject', amount: 50000, description: 'Inheritance' },
+    { id: 2, timingType: 'index', yearIndex: 10, calendarYear: 2035, type: 'remove', amount: 30000, description: 'Car Purchase' },
+  ]);
+
+  // --- Derived Calculations ---
+  const totalAllocation = portfolio.reduce((acc, curr) => acc + curr.allocation, 0);
+  const blendedReturnRate = enableMultiAsset 
+    ? portfolio.reduce((acc, curr) => acc + (curr.allocation / 100) * curr.returnRate, 0)
+    : baseReturnRate;
+
+  // --- Core Calculation Engine ---
+  const projectionData = useMemo(() => {
+    const data = [];
+    let currentBalance = initialCapital;
+    let totalInvested = initialCapital;
+    let totalReturns = 0;
+    let totalZakatPaid = 0;
+    let totalWithdrawn = 0;
+
+    let currentContributionAmount = annualContribution;
+
+    // Calculate effective interest rate based on compounding frequency
+    let effectiveRate = blendedReturnRate / 100;
+    if (compoundingFrequency === 'monthly') {
+      effectiveRate = Math.pow(1 + effectiveRate / 12, 12) - 1;
+    }
+
+    for (let year = 1; year <= totalYears; year++) {
+      const calendarYear = startYear + year - 1;
+      let startingBalance = currentBalance;
+      let contribution = 0;
+      let withdrawal = 0;
+      let eventInjection = 0;
+      let eventRemoval = 0;
+      let eventLabels = [];
+
+      // 1. Regular Contributions
+      if (year <= contributionYears) {
+        contribution = currentContributionAmount;
+        if (contributionGrowthType === 'percent') {
+          currentContributionAmount *= (1 + (contributionGrowth / 100));
+        } else {
+          currentContributionAmount += contributionGrowth;
+        }
+      }
+
+      // 2. Specific Events
+      if (enableEvents) {
+        events.forEach(e => {
+          let eventIndexYear = e.yearIndex;
+          if (e.timingType === 'year' && e.calendarYear) {
+            eventIndexYear = e.calendarYear - startYear + 1;
+          }
+          
+          if (eventIndexYear === year) {
+            if (e.type === 'inject') {
+              eventInjection += e.amount;
+              if(e.description) eventLabels.push(`+ ${e.description}`);
+            }
+            if (e.type === 'remove') {
+              eventRemoval += e.amount;
+              if(e.description) eventLabels.push(`- ${e.description}`);
+            }
+          }
+        });
+      }
+
+      // 3. Regular Withdrawals
+      let effectiveWithdrawalStartYear = withdrawalStartYearIndex;
+      if (withdrawalTimingType === 'year' && withdrawalStartCalYear) {
+        effectiveWithdrawalStartYear = withdrawalStartCalYear - startYear + 1;
+      }
+
+      if (enableWithdrawal && year >= effectiveWithdrawalStartYear) {
+        if (withdrawalType === 'percent') {
+          withdrawal = (startingBalance + contribution + eventInjection - eventRemoval) * (withdrawalValue / 100);
+        } else {
+          withdrawal = withdrawalValue;
+        }
+      }
+
+      let monthlyData = [];
+      let growth = 0;
+      let zakatAmount = 0;
+      let endBalance = 0;
+
+      if (compoundingFrequency === 'monthly') {
+        let currentMonthBalance = startingBalance;
+        const monthlyRate = (blendedReturnRate / 100) / 12;
+        const mContrib = contribution / 12;
+        const mWithdraw = withdrawal / 12;
+
+        for (let m = 1; m <= 12; m++) {
+          // Apply events in Month 1 for simplicity
+          let mEventNet = (m === 1) ? (eventInjection - eventRemoval) : 0;
+
+          let mWorkingBalance = currentMonthBalance + mContrib + mEventNet - mWithdraw;
+          if (mWorkingBalance < 0) mWorkingBalance = 0;
+
+          let mGrowth = mWorkingBalance * monthlyRate;
+          growth += mGrowth;
+
+          // Zakat only applies at the very end of the year (Month 12)
+          let mZakat = 0;
+          let mBalanceBeforeZakat = mWorkingBalance + mGrowth;
+          if (m === 12 && enableZakat && mBalanceBeforeZakat > 0) {
+            mZakat = mBalanceBeforeZakat * (zakatRate / 100);
+            zakatAmount = mZakat;
+          }
+
+          let mEndBalance = mBalanceBeforeZakat - mZakat;
+
+          monthlyData.push({
+            month: m,
+            startBalance: currentMonthBalance,
+            invest: mContrib,
+            events: mEventNet,
+            withdrawal: mWithdraw,
+            growth: mGrowth,
+            zakat: mZakat,
+            endBalance: mEndBalance
+          });
+          currentMonthBalance = mEndBalance;
+        }
+        endBalance = currentMonthBalance;
+        totalReturns += growth;
+        totalZakatPaid += zakatAmount;
+      } else {
+        // 4. Update working balance before growth
+        let workingBalance = startingBalance + contribution + eventInjection - eventRemoval - withdrawal;
+        if (workingBalance < 0) workingBalance = 0;
+
+        // 5. Calculate Growth using the exact frequency effective rate
+        growth = workingBalance * effectiveRate;
+        totalReturns += growth;
+        
+        let balanceBeforeZakat = workingBalance + growth;
+
+        // 6. Zakat Deduction
+        if (enableZakat && balanceBeforeZakat > 0) {
+          zakatAmount = balanceBeforeZakat * (zakatRate / 100);
+          totalZakatPaid += zakatAmount;
+        }
+
+        // 7. Final End of Year Balance
+        endBalance = balanceBeforeZakat - zakatAmount;
+      }
+
+      totalInvested += contribution + eventInjection;
+      totalWithdrawn += withdrawal + eventRemoval;
+      currentBalance = endBalance;
+
+      // 8. Inflation Adjustment
+      let realBalance = currentBalance;
+      if (enableInflation) {
+        realBalance = currentBalance / Math.pow(1 + (inflationRate / 100), year);
+      }
+
+      data.push({
+        year,
+        calendarYear,
+        startingBalance,
+        contribution,
+        withdrawal,
+        netEvents: eventInjection - eventRemoval,
+        eventLabels,
+        growth,
+        zakatAmount,
+        endBalance: currentBalance,
+        realBalance,
+        monthlyData,
+        totalInvested,
+        totalReturns,
+        totalZakatPaid,
+        totalWithdrawn
+      });
+    }
+    return data;
+  }, [
+    startYear, initialCapital, annualContribution, contributionYears, totalYears, blendedReturnRate, compoundingFrequency,
+    contributionGrowth, contributionGrowthType,
+    enableInflation, inflationRate, enableZakat, zakatRate, 
+    enableWithdrawal, withdrawalType, withdrawalValue, withdrawalTimingType, withdrawalStartYearIndex, withdrawalStartCalYear,
+    enableEvents, events
+  ]);
+
+  const finalYear = projectionData[projectionData.length - 1] || {};
+
+  return (
+    <div className="min-h-screen bg-[#fbfbfd] text-gray-900 selection:bg-blue-200 pb-20 print:pb-0 print:bg-white" style={{ fontFamily: "'Nunito', sans-serif" }}>
+      <style>
+        {`@import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap');
+          @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background-color: white !important; }
+            ::-webkit-scrollbar { display: none; }
+          }
+        `}
+      </style>
+      
+      {/* Small, Sticky Mobile-Friendly Header with KPIs */}
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-gray-200/60 shadow-[0_2px_10px_rgba(0,0,0,0.03)] transition-all print:static print:shadow-none print:border-none print:bg-transparent">
+        
+        {/* Print Only Document Header */}
+        <div className="hidden print:block px-8 pt-8 pb-4 max-w-7xl mx-auto">
+           <h1 className="text-4xl font-extrabold text-gray-900 mb-6">Wealth Projection Report</h1>
+           <div className="grid grid-cols-2 gap-6 text-sm mb-6 bg-gray-50/50 p-5 rounded-2xl border border-gray-100">
+             <div><span className="font-bold text-gray-500 uppercase tracking-wider text-xs">Prepared By</span><br/><span className="text-lg font-semibold text-gray-800">{printDetails.author || 'N/A'}</span></div>
+             <div><span className="font-bold text-gray-500 uppercase tracking-wider text-xs">Date</span><br/><span className="text-lg font-semibold text-gray-800">{printDetails.date}</span></div>
+             {printDetails.comments && <div className="col-span-2"><span className="font-bold text-gray-500 uppercase tracking-wider text-xs">Comments</span> <p className="mt-1 text-gray-800">{printDetails.comments}</p></div>}
+           </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+          <div className="flex flex-row items-center justify-between gap-3 w-full">
+            
+            {/* Title / Logo */}
+            <div className={`flex items-center print:hidden transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 ${isCardsScrolled ? 'opacity-0 w-0' : 'opacity-100 w-[75px] sm:w-[85px]'}`}>
+              <div className="flex items-center">
+                <h1 className="text-xl font-extrabold tracking-tight text-gray-900 whitespace-nowrap">
+                  Wealth
+                </h1>
+              </div>
+            </div>
+
+            {/* KPI Pills for Header (Horizontally scrollable) */}
+            <div 
+              className="flex flex-1 overflow-x-auto flex-nowrap justify-start gap-2 pb-1 md:pb-0 items-stretch print:flex-wrap print:overflow-visible [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] scroll-smooth"
+              onScroll={(e) => setIsCardsScrolled(e.target.scrollLeft > 10)}
+            >
+              <div className="flex-shrink-0 flex flex-col justify-center px-4 py-1.5 bg-blue-50/80 border border-blue-100 rounded-xl">
+                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider flex items-center gap-1.5">
+                  Nominal Balance ({startYear + totalYears - 1})
+                  <PopoverInfo 
+                    position="bottom" iconSize={12} iconClass="text-blue-400" 
+                    content="The actual, unadjusted monetary value of your portfolio at the end of the specified period, without accounting for inflation." 
+                  />
+                </span>
+                <span className="text-sm font-extrabold text-blue-900">{formatCurrency(finalYear?.endBalance || 0)}</span>
+              </div>
+
+              {enableInflation && (
+                <div className="flex-shrink-0 flex flex-col justify-center px-4 py-1.5 bg-purple-50/80 border border-purple-100 rounded-xl">
+                  <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider flex items-center gap-1.5">
+                    Real Balance
+                    <PopoverInfo 
+                      position="bottom" iconSize={12} iconClass="text-purple-400" 
+                      content="The inflation-adjusted value of your portfolio, representing its true purchasing power in today's money." 
+                    />
+                  </span>
+                  <span className="text-sm font-extrabold text-purple-900">{formatCurrency(finalYear?.realBalance || 0)}</span>
+                </div>
+              )}
+
+              <div className="flex-shrink-0 flex flex-col justify-center px-4 py-1.5 bg-gray-50/80 border border-gray-200 rounded-xl">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                  Total Principal
+                  <PopoverInfo 
+                    position="bottom" iconSize={12} iconClass="text-gray-400" 
+                    content="The total amount of your own money invested over the entire period, excluding any investment growth or returns." 
+                  />
+                </span>
+                <span className="text-sm font-bold text-gray-900">{formatCurrency(finalYear?.totalInvested || 0)}</span>
+              </div>
+
+              <div className="flex-shrink-0 flex flex-col justify-center px-4 py-1.5 bg-emerald-50/80 border border-emerald-100 rounded-xl">
+                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider flex items-center gap-1.5">
+                  Total Returns
+                  <PopoverInfo 
+                    position="bottom" iconSize={12} iconClass="text-emerald-400" 
+                    content="The total profit generated by the investments over the period through compound interest and market growth." 
+                  />
+                </span>
+                <span className="text-sm font-bold text-emerald-700">+{formatCurrency(finalYear?.totalReturns || 0)}</span>
+              </div>
+
+              {enableWithdrawal && (
+                <div className="flex-shrink-0 flex flex-col justify-center px-4 py-1.5 bg-red-50/80 border border-red-100 rounded-xl">
+                  <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider flex items-center gap-1.5">
+                    Total Withdrawn
+                    <PopoverInfo 
+                      position="bottom" iconSize={12} iconClass="text-red-400" 
+                      content="The sum of all standard withdrawals over the entire projection horizon." 
+                    />
+                  </span>
+                  <span className="text-sm font-bold text-red-600">-{formatCurrency(finalYear?.totalWithdrawn || 0)}</span>
+                </div>
+              )}
+
+              {enableZakat && (
+                <div className="flex-shrink-0 flex flex-col justify-center px-4 py-1.5 bg-amber-50/80 border border-amber-100 rounded-xl">
+                  <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider flex items-center gap-1.5">
+                    Total Zakat
+                    <PopoverInfo 
+                      position="bottom" iconSize={12} iconClass="text-amber-400" 
+                      content="The total cumulative Zakat deducted over the entire projection horizon." 
+                    />
+                  </span>
+                  <span className="text-sm font-bold text-amber-600">-{formatCurrency(finalYear?.totalZakatPaid || 0)}</span>
+                </div>
+              )}
+
+              {/* Export PDF Button */}
+              <button 
+                onClick={() => setShowPrintModal(true)} 
+                className="print:hidden flex-shrink-0 flex flex-col items-center justify-center px-4 py-1.5 bg-gray-50/80 border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-blue-600 transition-colors cursor-pointer"
+                title="Export PDF"
+              >
+                <Printer size={18} />
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-8 mt-2 print:block">
+        
+        {/* Left Column: Controls */}
+        <div className="w-full lg:w-[380px] flex-shrink-0 space-y-6 print:hidden">
+          
+          {/* Core Settings */}
+          {/* Using custom padding and borders to ensure the year picker popover is not hidden by overflow clips */}
+          <Card className="!p-0 border-none bg-transparent shadow-none">
+            <div className="p-6 bg-white border border-gray-200/80 shadow-sm rounded-3xl">
+              <h2 className="text-lg font-bold mb-6 flex items-center gap-2.5 text-gray-800">
+                <Settings size={20} className="text-blue-500" />
+                Core Parameters
+              </h2>
+              
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label tooltip="The calendar year your projection begins.">Start Year</Label>
+                    {/* CUSTOM GRID YEAR PICKER */}
+                    <YearPicker icon={CalendarDays} value={startYear} onChange={setStartYear} />
+                  </div>
+                  <div>
+                    <Label tooltip="Total lifespan of this projection.">Duration</Label>
+                    <NumberInput value={totalYears} onChange={setTotalYears} suffix="years" />
+                  </div>
+                </div>
+
+                <div>
+                  <Label tooltip="The amount of money you are starting with today.">Initial Capital</Label>
+                  <NumberInput prefix="₹" value={initialCapital} onChange={setInitialCapital} />
+                </div>
+
+                {/* Contribution Block */}
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                    <ArrowUpRight size={16} className="text-blue-500" />
+                    Contributions
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label tooltip="Base amount added annually.">Base Addition</Label>
+                      <NumberInput prefix="₹" value={annualContribution} onChange={setAnnualContribution} />
+                    </div>
+                    <div>
+                      <Label tooltip="Number of years you will add funds.">Adding For</Label>
+                      <NumberInput value={contributionYears} onChange={setContributionYears} suffix="years" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-end mb-2">
+                      <Label tooltip="How much your contribution increases every year.">Annual Growth</Label>
+                      <div className="w-24">
+                        <SegmentedControl 
+                          options={[{label: '₹', value: 'amount'}, {label: '%', value: 'percent'}]} 
+                          value={contributionGrowthType} 
+                          onChange={setContributionGrowthType} 
+                        />
+                      </div>
+                    </div>
+                    <NumberInput 
+                      prefix={contributionGrowthType === 'amount' ? '₹' : undefined} 
+                      suffix={contributionGrowthType === 'percent' ? '%' : undefined} 
+                      value={contributionGrowth} 
+                      onChange={setContributionGrowth} 
+                    />
+                  </div>
+                </div>
+
+                {/* Returns & Compounding Frequency */}
+                <div className="grid grid-cols-2 gap-4 items-start">
+                  {!enableMultiAsset && (
+                    <div>
+                      <Label tooltip="Expected average annual growth rate.">Expected Return</Label>
+                      <NumberInput value={baseReturnRate} onChange={setBaseReturnRate} suffix="%" />
+                    </div>
+                  )}
+                  <div className={enableMultiAsset ? 'col-span-2' : ''}>
+                    <Label tooltip="How often returns are calculated and added to the principal.">Compounding</Label>
+                    <SegmentedControl 
+                      options={[{label: 'Yearly', value: 'yearly'}, {label: 'Monthly', value: 'monthly'}]} 
+                      value={compoundingFrequency} 
+                      onChange={setCompoundingFrequency} 
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Advanced Toggles & Settings */}
+          <Card className="!p-0 border-none bg-transparent shadow-none">
+            <button 
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className={`w-full flex items-center justify-between p-6 text-lg font-bold bg-white hover:bg-gray-50/50 border border-gray-200/80 shadow-sm transition-colors outline-none text-gray-800 rounded-t-3xl ${!showAdvanced ? 'rounded-b-3xl' : 'border-b-0'}`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Activity size={20} className="text-indigo-500" />
+                Advanced Modeling
+              </div>
+              <div className={`p-1.5 rounded-full bg-gray-100 text-gray-500 transition-transform duration-300 ${showAdvanced ? 'rotate-180' : ''}`}>
+                <ChevronDown size={18} />
+              </div>
+            </button>
+
+            {showAdvanced && (
+              <div className="p-6 pt-0 space-y-4 bg-white border border-t-0 border-gray-200/80 shadow-sm rounded-b-3xl animate-in slide-in-from-top-4 fade-in duration-300">
+                
+                {/* Multi Asset */}
+                <div className="space-y-3">
+                  <Toggle 
+                    enabled={enableMultiAsset} onChange={setEnableMultiAsset} 
+                    label="Multi-Asset Portfolio" 
+                    description="Build a custom asset allocation"
+                  />
+                  {enableMultiAsset && (
+                    <div className="bg-gray-50/80 p-4 rounded-2xl border border-gray-100 space-y-4">
+                      <div className="flex justify-between text-sm font-semibold pb-2 border-b border-gray-200">
+                        <span className="text-gray-600">Blended Rate: <span className="text-gray-900">{formatNumber(blendedReturnRate)}%</span></span>
+                        <span className={totalAllocation === 100 ? 'text-emerald-600' : 'text-red-500'}>
+                          Total: {totalAllocation}%
+                        </span>
+                      </div>
+                      {portfolio.map((asset, index) => (
+                        <div key={asset.id} className="flex gap-2 items-center">
+                          <div className="flex-1">
+                            <TextInput 
+                              value={asset.name} 
+                              onChange={(val) => {
+                                const newPort = [...portfolio];
+                                newPort[index].name = val;
+                                setPortfolio(newPort);
+                              }}
+                            />
+                          </div>
+                          <div className="w-20">
+                            <NumberInput 
+                              suffix="%" 
+                              value={asset.allocation}
+                              onChange={(val) => {
+                                const newPort = [...portfolio];
+                                newPort[index].allocation = val;
+                                setPortfolio(newPort);
+                              }}
+                              className="text-sm"
+                            />
+                          </div>
+                          <div className="w-20">
+                            <NumberInput 
+                              suffix="%" 
+                              value={asset.returnRate}
+                              onChange={(val) => {
+                                const newPort = [...portfolio];
+                                newPort[index].returnRate = val;
+                                setPortfolio(newPort);
+                              }}
+                              className="text-sm"
+                            />
+                          </div>
+                          <button 
+                            onClick={() => setPortfolio(portfolio.filter(a => a.id !== asset.id))}
+                            className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))}
+                      <button 
+                        onClick={() => setPortfolio([...portfolio, { id: Date.now(), name: 'New Asset', allocation: 0, returnRate: 5 }])}
+                        className="text-sm text-blue-600 font-semibold flex items-center gap-1.5 hover:text-blue-700 w-full justify-center py-2 bg-blue-50/50 rounded-xl transition-colors"
+                      >
+                        <Plus size={16} /> Add Asset Class
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Withdrawal Phase */}
+                <div className="space-y-3">
+                  <Toggle 
+                    enabled={enableWithdrawal} onChange={setEnableWithdrawal} 
+                    label="Withdrawal Phase" 
+                    description="Simulate retirement or drawdowns"
+                  />
+                  {enableWithdrawal && (
+                    <div className="p-4 bg-gray-50/80 border border-gray-100 rounded-2xl space-y-4 animate-in fade-in">
+                      <div>
+                        <div className="flex justify-between items-end mb-2">
+                          <Label tooltip="When to begin taking withdrawals">Start Taking In</Label>
+                          <div className="w-44">
+                            <SegmentedControl 
+                              options={[{label: 'Year Index', value: 'index'}, {label: 'Cal Year', value: 'year'}]} 
+                              value={withdrawalTimingType} 
+                              onChange={setWithdrawalTimingType} 
+                            />
+                          </div>
+                        </div>
+                        {withdrawalTimingType === 'index' ? (
+                          <NumberInput value={withdrawalStartYearIndex} onChange={setWithdrawalStartYearIndex} prefix="Year" />
+                        ) : (
+                          <YearPicker value={withdrawalStartCalYear} onChange={setWithdrawalStartCalYear} icon={CalendarDays} />
+                        )}
+                      </div>
+                      
+                      <div>
+                        <div className="flex justify-between items-end mb-2">
+                          <Label tooltip="Annual withdrawal amount or % of balance">Annual Withdrawal</Label>
+                          <div className="w-24">
+                            <SegmentedControl 
+                              options={[{label: '₹', value: 'amount'}, {label: '%', value: 'percent'}]} 
+                              value={withdrawalType} 
+                              onChange={setWithdrawalType} 
+                            />
+                          </div>
+                        </div>
+                        <NumberInput 
+                          prefix={withdrawalType === 'amount' ? '₹' : undefined} 
+                          suffix={withdrawalType === 'percent' ? '%' : undefined} 
+                          value={withdrawalValue} 
+                          onChange={setWithdrawalValue} 
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Specific Events */}
+                <div className="space-y-3">
+                  <Toggle 
+                    enabled={enableEvents} onChange={setEnableEvents} 
+                    label="Cash Events" 
+                    description="One-off injections or removals"
+                  />
+                  {enableEvents && (
+                    <div className="bg-gray-50/80 p-4 rounded-2xl border border-gray-100 space-y-3">
+                      {events.map((evt, index) => (
+                        <div key={evt.id} className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm space-y-3">
+                          <div className="flex gap-2 items-center justify-between border-b border-gray-100 pb-2">
+                            <div className="w-44">
+                              <SegmentedControl 
+                                options={[{label: 'Year Index', value: 'index'}, {label: 'Cal Year', value: 'year'}]} 
+                                value={evt.timingType} 
+                                onChange={(val) => {
+                                  const newEvts = [...events];
+                                  newEvts[index].timingType = val;
+                                  setEvents(newEvts);
+                                }} 
+                              />
+                            </div>
+                            <div className="flex-1 w-full relative">
+                              {evt.timingType === 'index' ? (
+                                <NumberInput 
+                                  prefix="Year"
+                                  value={evt.yearIndex}
+                                  onChange={(val) => {
+                                    const newEvts = [...events];
+                                    newEvts[index].yearIndex = val;
+                                    setEvents(newEvts);
+                                  }}
+                                />
+                              ) : (
+                                <YearPicker 
+                                  value={evt.calendarYear}
+                                  onChange={(val) => {
+                                    const newEvts = [...events];
+                                    newEvts[index].calendarYear = val;
+                                    setEvents(newEvts);
+                                  }}
+                                />
+                              )}
+                            </div>
+                            <button 
+                              onClick={() => setEvents(events.filter(e => e.id !== evt.id))}
+                              className="p-2 text-gray-300 hover:text-red-500 transition-colors ml-2"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                          
+                          <div className="flex gap-2 items-center pt-1">
+                            <div className="w-36">
+                              <SegmentedControl 
+                                options={[{label: 'In (+)', value: 'inject'}, {label: 'Out (-)', value: 'remove'}]} 
+                                value={evt.type}
+                                onChange={(val) => {
+                                  const newEvts = [...events];
+                                  newEvts[index].type = val;
+                                  setEvents(newEvts);
+                                }} 
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <NumberInput 
+                                prefix="₹"
+                                value={evt.amount}
+                                onChange={(val) => {
+                                  const newEvts = [...events];
+                                  newEvts[index].amount = val;
+                                  setEvents(newEvts);
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <TextInput 
+                            placeholder="Event Label (e.g., Buy House)" 
+                            value={evt.description}
+                            onChange={(val) => {
+                              const newEvts = [...events];
+                              newEvts[index].description = val;
+                              setEvents(newEvts);
+                            }}
+                          />
+                        </div>
+                      ))}
+                      <button 
+                        onClick={() => setEvents([...events, { id: Date.now(), timingType: 'index', yearIndex: 1, calendarYear: startYear + 1, type: 'inject', amount: 10000, description: 'New Event' }])}
+                        className="text-sm text-blue-600 font-semibold flex items-center gap-1.5 hover:text-blue-700 w-full justify-center py-2 bg-blue-50/50 rounded-xl transition-colors mt-2"
+                      >
+                        <Plus size={16} /> Add Event
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Inflation */}
+                <div className="space-y-3">
+                  <Toggle 
+                    enabled={enableInflation} onChange={setEnableInflation} 
+                    label="Inflation Adjustment" 
+                    description="View real purchasing power"
+                  />
+                  {enableInflation && (
+                    <div className="px-4 py-2 animate-in fade-in">
+                      <Label>Annual Inflation Rate</Label>
+                      <NumberInput value={inflationRate} onChange={setInflationRate} suffix="%" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Zakat */}
+                <div className="space-y-3">
+                  <Toggle 
+                    enabled={enableZakat} onChange={setEnableZakat} 
+                    label="Zakat Calculation" 
+                    description="Annual 2.5% wealth deduction"
+                  />
+                  {enableZakat && (
+                    <div className="px-4 py-2 animate-in fade-in">
+                      <Label>Zakat Rate</Label>
+                      <NumberInput value={zakatRate} onChange={setZakatRate} suffix="%" />
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* Right Column: Visualizations & Data */}
+        <div className="flex-1 w-full space-y-6 print:w-full print:block">
+          
+          {/* Interactive Chart */}
+          <Card className="h-[480px] flex flex-col border-gray-200/60 z-10 relative">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-gray-800">Wealth Trajectory</h2>
+              <div className="text-sm font-medium text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                {startYear} - {startYear + totalYears - 1}
+              </div>
+            </div>
+            <div className="flex-1 w-full min-h-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={projectionData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorInvested" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorReturns" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#f3f4f6" />
+                  <XAxis 
+                    dataKey="calendarYear" 
+                    tickLine={false} 
+                    axisLine={false} 
+                    tick={{ fill: '#9ca3af', fontSize: 13, fontWeight: 500 }}
+                    minTickGap={30}
+                  />
+                  <YAxis 
+                    tickFormatter={(value) => `₹${value >= 1000 ? (value / 1000).toLocaleString('en-IN') + 'k' : value}`}
+                    tickLine={false} 
+                    axisLine={false} 
+                    tick={{ fill: '#9ca3af', fontSize: 13, fontWeight: 500 }}
+                    width={70}
+                  />
+                  <RechartsTooltip 
+                    contentStyle={{ borderRadius: '16px', border: '1px solid #f3f4f6', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)', padding: '16px', backgroundColor: 'rgba(255, 255, 255, 0.95)', backdropFilter: 'blur(8px)' }}
+                    formatter={(value) => formatCurrency(value)}
+                    labelFormatter={(label) => <span className="font-bold text-gray-900 text-base mb-2 block">{label} <span className="text-gray-400 font-normal text-sm ml-1">(Year {label - startYear + 1})</span></span>}
+                    labelStyle={{ color: '#111827' }}
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '13px', paddingTop: '20px', fontWeight: 500 }} />
+                  
+                  <Area isAnimationActive={expandedYear !== 'ALL'} type="monotone" dataKey="totalInvested" name="Total Principal" stackId="1" stroke="#3b82f6" fill="url(#colorInvested)" strokeWidth={3} />
+                  <Area isAnimationActive={expandedYear !== 'ALL'} type="monotone" dataKey="totalReturns" name="Total Returns" stackId="1" stroke="#10b981" fill="url(#colorReturns)" strokeWidth={3} />
+                  
+                  <Line isAnimationActive={expandedYear !== 'ALL'} type="monotone" dataKey="endBalance" name="Nominal Balance" stroke="#111827" strokeWidth={3} dot={false} activeDot={{ r: 6, strokeWidth: 0 }} />
+                  {enableInflation && (
+                    <Line isAnimationActive={expandedYear !== 'ALL'} type="monotone" dataKey="realBalance" name="Real Balance" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="6 6" dot={false} />
+                  )}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          {/* Detailed Data Table */}
+          <Card className="overflow-hidden p-0 !pb-0 border-gray-200/60 z-10 relative">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white print:px-0">
+              <h2 className="text-xl font-bold text-gray-800">Annual Breakdown</h2>
+            </div>
+            <div className="overflow-x-auto max-h-[500px] overflow-y-auto print:max-h-none print:overflow-visible">
+              <table className="w-full text-xs sm:text-sm text-left">
+                <thead className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider bg-gray-100 sticky top-0 z-10 shadow-sm leading-tight print:bg-gray-100 border-b border-gray-200">
+                  <tr>
+                    <th className="px-2 sm:px-4 py-3 font-bold align-bottom">Year</th>
+                    <th className="px-2 sm:px-4 py-3 font-bold align-bottom">Start<br/>Balance</th>
+                    <th className="px-2 sm:px-4 py-3 font-bold text-blue-600 align-bottom">Invest</th>
+                    {enableEvents && <th className="px-2 sm:px-4 py-3 font-bold text-purple-600 align-bottom">Events</th>}
+                    {enableWithdrawal && <th className="px-2 sm:px-4 py-3 font-bold text-red-500 align-bottom">With-<br/>drawals</th>}
+                    <th className="px-2 sm:px-4 py-3 font-bold text-emerald-600 align-bottom">Growth</th>
+                    {enableZakat && <th className="px-2 sm:px-4 py-3 font-bold text-amber-600 align-bottom">Zakat</th>}
+                    <th className="px-2 sm:px-4 py-3 font-bold text-gray-900 bg-gray-200/50 align-bottom">End<br/>Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white">
+                  {projectionData.map((row) => {
+                    const isExpanded = expandedYear === row.year || expandedYear === 'ALL';
+                    return (
+                    <React.Fragment key={row.year}>
+                      <tr 
+                        className={`hover:bg-blue-50/30 transition-colors group print:break-inside-avoid ${compoundingFrequency === 'monthly' ? 'cursor-pointer print:cursor-default' : ''}`}
+                        onClick={() => compoundingFrequency === 'monthly' && expandedYear !== 'ALL' ? setExpandedYear(expandedYear === row.year ? null : row.year) : undefined}
+                      >
+                        <td className="px-2 sm:px-4 py-3 flex items-center gap-2 whitespace-nowrap">
+                          {compoundingFrequency === 'monthly' && (
+                            <div className="flex-shrink-0 print:hidden">
+                              {isExpanded ? <ChevronDown size={16} className="text-blue-500" /> : <ChevronRight size={16} className="text-gray-400 group-hover:text-blue-500 transition-colors" />}
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-bold text-gray-900">{row.calendarYear}</div>
+                            <div className="text-[10px] sm:text-xs text-gray-400">Year {row.year}</div>
+                          </div>
+                        </td>
+                        <td className="px-2 sm:px-4 py-3 font-medium text-gray-600 whitespace-nowrap">{formatCurrency(row.startingBalance)}</td>
+                        <td className="px-2 sm:px-4 py-3 font-semibold text-blue-600 whitespace-nowrap">{row.contribution > 0 ? `+${formatCurrency(row.contribution)}` : '-'}</td>
+                        
+                        {enableEvents && (
+                          <td className="px-2 sm:px-4 py-3 whitespace-nowrap">
+                            <span className={`font-semibold ${row.netEvents > 0 ? 'text-purple-600' : row.netEvents < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                              {row.netEvents !== 0 ? (row.netEvents > 0 ? '+' : '') + formatCurrency(row.netEvents) : '-'}
+                            </span>
+                            {row.eventLabels.length > 0 && (
+                              <span className="block text-[10px] font-medium text-gray-500 mt-0.5 max-w-[100px] sm:max-w-[150px] truncate" title={row.eventLabels.join(', ')}>
+                                {row.eventLabels.join(', ')}
+                              </span>
+                            )}
+                          </td>
+                        )}
+                        
+                        {enableWithdrawal && (
+                          <td className="px-2 sm:px-4 py-3 font-semibold text-red-500 whitespace-nowrap">{row.withdrawal > 0 ? `-${formatCurrency(row.withdrawal)}` : '-'}</td>
+                        )}
+                        
+                        <td className="px-2 sm:px-4 py-3 font-semibold text-emerald-600 whitespace-nowrap">+{formatCurrency(row.growth)}</td>
+                        
+                        {enableZakat && (
+                          <td className="px-2 sm:px-4 py-3 font-semibold text-amber-600 whitespace-nowrap">{row.zakatAmount > 0 ? `-${formatCurrency(row.zakatAmount)}` : '-'}</td>
+                        )}
+                        
+                        <td className="px-2 sm:px-4 py-3 font-extrabold text-gray-900 bg-gray-50/30 group-hover:bg-transparent transition-colors whitespace-nowrap">
+                          {formatCurrency(row.endBalance)}
+                        </td>
+                      </tr>
+                      
+                      {isExpanded && compoundingFrequency === 'monthly' && (
+                        <tr className="bg-gray-50/80 shadow-inner print:bg-white print:shadow-none print:break-inside-avoid">
+                          <td colSpan={10} className="p-0 border-b border-gray-300">
+                            <div className="py-4 px-3 sm:px-6 md:px-10 lg:px-14 print:px-6 print:py-6">
+                              <h4 className="text-xs sm:text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                <CalendarDays size={16} className="text-blue-500 print:text-gray-600" />
+                                Monthly Compounding Breakdown ({row.calendarYear})
+                              </h4>
+                              <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm print:border-gray-300 print:shadow-none">
+                                <table className="w-full text-xs sm:text-sm text-left">
+                                  <thead className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider bg-gray-100 leading-tight">
+                                    <tr>
+                                      <th className="px-2 sm:px-4 py-2 font-bold align-bottom whitespace-nowrap">Month</th>
+                                      <th className="px-2 sm:px-4 py-2 font-bold align-bottom">Start<br/>Balance</th>
+                                      <th className="px-2 sm:px-4 py-2 font-bold text-blue-600 align-bottom">Invest</th>
+                                      {enableEvents && <th className="px-2 sm:px-4 py-2 font-bold text-purple-600 align-bottom">Events</th>}
+                                      {enableWithdrawal && <th className="px-2 sm:px-4 py-2 font-bold text-red-500 align-bottom">With-<br/>drawals</th>}
+                                      <th className="px-2 sm:px-4 py-2 font-bold text-emerald-600 align-bottom">Growth</th>
+                                      {enableZakat && <th className="px-2 sm:px-4 py-2 font-bold text-amber-600 align-bottom">Zakat</th>}
+                                      <th className="px-2 sm:px-4 py-2 font-bold text-gray-900 bg-gray-50 align-bottom">End<br/>Balance</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100 bg-gray-50/30">
+                                    {row.monthlyData.map(m => (
+                                      <tr key={m.month} className="hover:bg-blue-50/30 transition-colors">
+                                        <td className="px-2 sm:px-4 py-2 font-bold text-gray-900 whitespace-nowrap">{MONTH_NAMES[m.month - 1]} {row.calendarYear}</td>
+                                        <td className="px-2 sm:px-4 py-2 font-medium text-gray-600 whitespace-nowrap">{formatCurrency(m.startBalance)}</td>
+                                        <td className="px-2 sm:px-4 py-2 font-semibold text-blue-600 whitespace-nowrap">
+                                          {m.invest > 0 ? `+${formatCurrency(m.invest)}` : <span className="text-blue-300 font-medium">-</span>}
+                                        </td>
+                                        {enableEvents && <td className="px-2 sm:px-4 py-2 whitespace-nowrap">
+                                          {m.events !== 0 ? (
+                                            <span className={`font-semibold ${m.events > 0 ? 'text-purple-600' : 'text-red-500'}`}>
+                                              {m.events > 0 ? '+' : ''}{formatCurrency(m.events)}
+                                            </span>
+                                          ) : <span className="text-purple-300 font-medium">-</span>}
+                                        </td>}
+                                        {enableWithdrawal && <td className="px-2 sm:px-4 py-2 whitespace-nowrap">
+                                          {m.withdrawal > 0 ? (
+                                            <span className="font-semibold text-red-500">-{formatCurrency(m.withdrawal)}</span>
+                                          ) : <span className="text-red-300 font-medium">-</span>}
+                                        </td>}
+                                        <td className="px-2 sm:px-4 py-2 font-semibold text-emerald-600 whitespace-nowrap">+{formatCurrency(m.growth)}</td>
+                                        {enableZakat && <td className="px-2 sm:px-4 py-2 whitespace-nowrap">
+                                          {m.zakat > 0 ? (
+                                            <span className="font-semibold text-amber-600">-{formatCurrency(m.zakat)}</span>
+                                          ) : <span className="text-amber-300 font-medium">-</span>}
+                                        </td>}
+                                        <td className="px-2 sm:px-4 py-2 font-bold text-gray-900 bg-white print:bg-transparent whitespace-nowrap">{formatCurrency(m.endBalance)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )})}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+          
+        </div>
+      </main>
+
+      {/* Page 2 - Print Only Assumptions & Methodologies */}
+      <div className="hidden print:block print:break-before-page p-8 max-w-7xl mx-auto mt-10">
+        <h2 className="text-2xl font-extrabold mb-8 text-gray-900 border-b-2 border-gray-800 pb-4">Report Assumptions & Methodologies</h2>
+        
+        <div className="grid grid-cols-2 gap-y-6 gap-x-12 text-sm text-gray-800">
+          <div><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Initial Capital</strong> <span className="text-lg font-semibold">{formatCurrency(initialCapital)}</span></div>
+          <div><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Projection Horizon</strong> <span className="text-lg font-semibold">{totalYears} years (Starting {startYear})</span></div>
+          
+          <div><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Base Addition</strong> <span className="text-lg font-semibold">{formatCurrency(annualContribution)} for {contributionYears} years</span></div>
+          {contributionGrowth > 0 && <div><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Contribution Growth</strong> <span className="text-lg font-semibold">{contributionGrowth}{contributionGrowthType === 'percent' ? '%' : '₹'} annually</span></div>}
+          
+          <div><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Compounding Frequency</strong> <span className="text-lg font-semibold">{compoundingFrequency === 'monthly' ? 'Monthly' : 'Yearly'}</span></div>
+          
+          {enableMultiAsset ? (
+             <div className="col-span-2"><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Portfolio Allocation</strong> <span className="text-lg font-semibold">{portfolio.map(p => `${p.name} (${p.allocation}%, ${p.returnRate}% return)`).join(', ')}</span></div>
+          ) : (
+             <div><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Expected Return</strong> <span className="text-lg font-semibold">{baseReturnRate}%</span></div>
+          )}
+          
+          {enableInflation && <div><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Inflation Rate</strong> <span className="text-lg font-semibold">{inflationRate}% annually</span></div>}
+          {enableZakat && <div><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Zakat Rate</strong> <span className="text-lg font-semibold">{zakatRate}% deducted annually</span></div>}
+          
+          {enableWithdrawal && <div className="col-span-2"><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Withdrawal Phase</strong> <span className="text-lg font-semibold">Commencing {withdrawalTimingType === 'index' ? `Year ${withdrawalStartYearIndex}` : withdrawalStartCalYear} at {withdrawalValue}{withdrawalType === 'percent' ? '%' : '₹'} annually</span></div>}
+        </div>
+
+        <h3 className="text-xl font-bold mb-4 mt-12 text-gray-900 border-b border-gray-300 pb-2">Terminology Definitions</h3>
+        <div className="grid grid-cols-2 gap-y-6 gap-x-12 text-sm text-gray-800">
+          <div><strong className="block text-gray-900 mb-1">Total Principal</strong> <span className="text-gray-700">The total amount of your own money invested over the entire period, excluding any investment growth or returns.</span></div>
+          <div><strong className="block text-gray-900 mb-1">Total Returns</strong> <span className="text-gray-700">The total profit generated by the investments over the period through compound interest and market growth.</span></div>
+          {enableWithdrawal && <div><strong className="block text-gray-900 mb-1">Total Withdrawn</strong> <span className="text-gray-700">The sum of all standard withdrawals over the entire projection horizon.</span></div>}
+          {enableZakat && <div><strong className="block text-gray-900 mb-1">Total Zakat Paid</strong> <span className="text-gray-700">The total cumulative Zakat deducted over the entire projection horizon.</span></div>}
+          <div><strong className="block text-gray-900 mb-1">Nominal Balance</strong> <span className="text-gray-700">The actual, unadjusted monetary value of your portfolio at the end of the specified period, without accounting for inflation.</span></div>
+          {enableInflation && <div><strong className="block text-gray-900 mb-1">Real Balance</strong> <span className="text-gray-700">The inflation-adjusted value of your portfolio, representing its true purchasing power in today's money.</span></div>}
+        </div>
+
+        <div className="mt-16 p-6 bg-gray-50 rounded-2xl border border-gray-200 text-center text-gray-600 font-medium">
+           Prepared by Zaid using A.I., for any bug please contact <a href="mailto:zaidshaikh@msn.com" className="text-blue-600 underline">zaidshaikh@msn.com</a>
+        </div>
+      </div>
+
+      {/* Modal for Export Settings */}
+      {showPrintModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-bold mb-5 flex items-center gap-2 text-gray-900">
+              <FileText size={20} className="text-blue-600" /> Print / Export PDF Settings
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Prepared By (Author)</label>
+                <div className="relative">
+                  <User size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input 
+                    type="text" 
+                    placeholder="Your Name" 
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 pl-10 pr-4 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                    value={printDetails.author} 
+                    onChange={e => setPrintDetails({...printDetails, author: e.target.value})} 
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Date</label>
+                <div className="relative">
+                  <CalendarDays size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input 
+                    type="date" 
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 pl-10 pr-4 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                    value={printDetails.date} 
+                    onChange={e => setPrintDetails({...printDetails, date: e.target.value})} 
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Project Comments / Goals</label>
+                <textarea 
+                  placeholder="E.g. Retirement projection assuming aggressive growth..." 
+                  rows={3}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"
+                  value={printDetails.comments} 
+                  onChange={e => setPrintDetails({...printDetails, comments: e.target.value})} 
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6 pt-5 border-t border-gray-100">
+              <button 
+                onClick={() => setShowPrintModal(false)} 
+                className="px-5 py-2.5 rounded-xl font-bold text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handlePrintSubmit} 
+                className="px-5 py-2.5 rounded-xl font-bold bg-blue-600 text-white shadow-md hover:bg-blue-700 hover:shadow-lg transition-all flex items-center gap-2"
+              >
+                <Printer size={18} /> Generate PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+const root = createRoot(document.getElementById('root'));
+root.render(<FinanceCalculator />);
+  </script>
+</body>
+</html>
