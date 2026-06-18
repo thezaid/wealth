@@ -50,7 +50,7 @@ import {
 } from 'https://esm.sh/recharts@2.15.4?external=react,react-dom';
 import { 
   Settings, TrendingUp, Wallet, Plus, Trash2, Info, X,
-  ChevronDown, ChevronLeft, ChevronRight, Activity, CalendarDays, ArrowUpRight, Calculator, PieChart, Printer, FileText, User
+  ChevronDown, ChevronLeft, ChevronRight, Activity, CalendarDays, ArrowUpRight, Calculator, PieChart, Printer, FileText, User, Maximize
 } from 'https://esm.sh/lucide-react@0.468.0?external=react';
 
 // --- Utility Functions ---
@@ -169,6 +169,60 @@ const Label = ({ children, tooltip }) => (
   <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-gray-700">
     {children}
     {tooltip && <PopoverInfo content={tooltip} position="top" />}
+  </div>
+);
+
+// --- Shared Glossary Component ---
+const GlossaryContent = () => (
+  <div className="space-y-8 text-sm text-gray-700">
+    <section>
+      <h4 className="font-bold text-gray-900 text-lg mb-3">Core Engine Formula</h4>
+      <div className="bg-gray-50/80 p-4 rounded-xl font-mono text-sm border border-gray-200 text-gray-800 shadow-sm">
+        <div className="text-blue-600 mb-1">Yearly End Balance =</div>
+        <div className="pl-4">(Start Balance + Investments + Net Events - Withdrawals)</div>
+        <div className="pl-4">+ Growth</div>
+        <div className="pl-4">- Zakat</div>
+      </div>
+    </section>
+    
+    <section className="space-y-5">
+      <h4 className="font-bold text-gray-900 text-lg border-b border-gray-200 pb-2">Terminology & Calculations</h4>
+      
+      <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+        <strong className="text-gray-900 block text-base mb-1">Nominal Balance</strong>
+        The final monetary value of the portfolio at the end of the term, completely unadjusted for inflation. This is the exact number you will see in your bank or brokerage account.
+      </div>
+      
+      <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+        <strong className="text-purple-700 block text-base mb-1">Real Balance (Inflation Adjusted)</strong>
+        The equivalent purchasing power of your final balance in today's money. This shows you what your future wealth can actually buy in today's terms. <br/>
+        <div className="bg-gray-50 p-2 mt-2 rounded border border-gray-100 font-mono text-xs text-gray-600">Formula: Nominal Balance / (1 + Annual Inflation Rate)^Years</div>
+      </div>
+      
+      <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+        <strong className="text-blue-600 block text-base mb-1">Total Principal (Invested)</strong>
+        The pure out-of-pocket cash you contributed. This includes your initial starting capital, all recurring annual base contributions, and any specific one-off cash injection events.
+      </div>
+      
+      <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+        <strong className="text-emerald-600 block text-base mb-1">Total Returns (Growth)</strong>
+        The total profit generated via compounding interest and asset allocation returns.
+        <ul className="list-disc pl-5 mt-2 space-y-1 text-gray-600">
+          <li><strong>Yearly Compounding:</strong> Growth is calculated once at the end of the year on the average working balance.</li>
+          <li><strong>Monthly Compounding:</strong> Annual returns are divided by 12, and contributions/withdrawals are divided by 12. Growth is calculated and compounded 12 times a year, simulating a more realistic market environment.</li>
+        </ul>
+      </div>
+      
+      <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+        <strong className="text-amber-600 block text-base mb-1">Zakat</strong>
+        Calculated strictly on the end-of-year wealth (post-growth). The formula applies your specified rate (default 2.5%) against the final positive balance before rolling it over to the next year.
+      </div>
+
+      <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+        <strong className="text-red-500 block text-base mb-1">Withdrawals & Events</strong>
+        Standard withdrawals are taken out <strong>BEFORE</strong> the year's growth is applied (simulating funds needed for living expenses). One-off cash events (like buying a car or receiving inheritance) are applied at the beginning of their respective year or month.
+      </div>
+    </section>
   </div>
 );
 
@@ -385,10 +439,15 @@ function FinanceCalculator() {
   const [compoundingFrequency, setCompoundingFrequency] = useState('yearly'); // 'yearly' | 'monthly'
   const [expandedYear, setExpandedYear] = useState(null);
   const [isCardsScrolled, setIsCardsScrolled] = useState(false);
+  
+  const chartRef = useRef(null);
 
   // Print States
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printDetails, setPrintDetails] = useState({ author: '', date: new Date().toISOString().split('T')[0], comments: '' });
+
+  // Info Modal State
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   const handlePrintSubmit = () => {
     setShowPrintModal(false);
@@ -625,6 +684,26 @@ function FinanceCalculator() {
 
   const finalYear = projectionData[projectionData.length - 1] || {};
 
+  const toggleFullScreen = async () => {
+    if (!document.fullscreenElement) {
+      try {
+        if (chartRef.current) {
+          await chartRef.current.requestFullscreen();
+          // Attempt to lock to landscape if viewing on a mobile device
+          if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+            await window.screen.orientation.lock('landscape').catch(e => console.log('Orientation lock not supported:', e));
+          }
+        }
+      } catch (err) {
+        console.error("Fullscreen error", err);
+      }
+    } else {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#fbfbfd] text-gray-900 selection:bg-blue-200 pb-20 print:pb-0 print:bg-white" style={{ fontFamily: "'Nunito', sans-serif" }}>
       <style>
@@ -632,133 +711,129 @@ function FinanceCalculator() {
           @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background-color: white !important; }
             ::-webkit-scrollbar { display: none; }
+            .print-break-after { page-break-after: always; break-after: page; }
+            .print-break-before { page-break-before: always; break-before: page; }
+          }
+          .fullscreen-card:fullscreen {
+            background-color: white !important;
+            padding: 24px !important;
+            display: flex;
+            flex-direction: column;
+            overflow: auto;
           }
         `}
       </style>
       
-      {/* Small, Sticky Mobile-Friendly Header with KPIs */}
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-gray-200/60 shadow-[0_2px_10px_rgba(0,0,0,0.03)] transition-all print:static print:shadow-none print:border-none print:bg-transparent">
-        
-        {/* Print Only Document Header */}
-        <div className="hidden print:block px-8 pt-8 pb-4 max-w-7xl mx-auto">
-           <h1 className="text-4xl font-extrabold text-gray-900 mb-6">Wealth Projection Report</h1>
-           <div className="grid grid-cols-2 gap-6 text-sm mb-6 bg-gray-50/50 p-5 rounded-2xl border border-gray-100">
-             <div><span className="font-bold text-gray-500 uppercase tracking-wider text-xs">Prepared By</span><br/><span className="text-lg font-semibold text-gray-800">{printDetails.author || 'N/A'}</span></div>
-             <div><span className="font-bold text-gray-500 uppercase tracking-wider text-xs">Date</span><br/><span className="text-lg font-semibold text-gray-800">{printDetails.date}</span></div>
-             {printDetails.comments && <div className="col-span-2"><span className="font-bold text-gray-500 uppercase tracking-wider text-xs">Comments</span> <p className="mt-1 text-gray-800">{printDetails.comments}</p></div>}
-           </div>
-        </div>
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <div className="flex flex-row items-center justify-between gap-3 w-full">
-            
-            {/* Title / Logo */}
-            <div className={`flex items-center print:hidden transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0 ${isCardsScrolled ? 'opacity-0 w-0' : 'opacity-100 w-[75px] sm:w-[85px]'}`}>
-              <div className="flex items-center">
-                <h1 className="text-xl font-extrabold tracking-tight text-gray-900 whitespace-nowrap">
-                  Wealth
-                </h1>
-              </div>
+      {/* Top Navigation Bar */}
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-200/60 transition-all print:hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="bg-blue-600 text-white p-2 rounded-xl shadow-sm">
+              <Wallet size={20} />
             </div>
-
-            {/* KPI Pills for Header (Horizontally scrollable) */}
-            <div 
-              className="flex flex-1 overflow-x-auto flex-nowrap justify-start gap-2 pb-1 md:pb-0 items-stretch print:flex-wrap print:overflow-visible [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] scroll-smooth"
-              onScroll={(e) => setIsCardsScrolled(e.target.scrollLeft > 10)}
+            <h1 className="text-xl font-extrabold tracking-tight text-gray-900">
+              Wealth<span className="text-blue-600">Calc</span>
+            </h1>
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              onClick={() => setShowInfoModal(true)}
+              className="p-2.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+              title="How it works"
             >
-              <div className="flex-shrink-0 flex flex-col justify-center px-4 py-1.5 bg-blue-50/80 border border-blue-100 rounded-xl">
-                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider flex items-center gap-1.5">
-                  Nominal Balance ({startYear + totalYears - 1})
-                  <PopoverInfo 
-                    position="bottom" iconSize={12} iconClass="text-blue-400" 
-                    content="The actual, unadjusted monetary value of your portfolio at the end of the specified period, without accounting for inflation." 
-                  />
-                </span>
-                <span className="text-sm font-extrabold text-blue-900">{formatCurrency(finalYear?.endBalance || 0)}</span>
-              </div>
-
-              {enableInflation && (
-                <div className="flex-shrink-0 flex flex-col justify-center px-4 py-1.5 bg-purple-50/80 border border-purple-100 rounded-xl">
-                  <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider flex items-center gap-1.5">
-                    Real Balance
-                    <PopoverInfo 
-                      position="bottom" iconSize={12} iconClass="text-purple-400" 
-                      content="The inflation-adjusted value of your portfolio, representing its true purchasing power in today's money." 
-                    />
-                  </span>
-                  <span className="text-sm font-extrabold text-purple-900">{formatCurrency(finalYear?.realBalance || 0)}</span>
-                </div>
-              )}
-
-              <div className="flex-shrink-0 flex flex-col justify-center px-4 py-1.5 bg-gray-50/80 border border-gray-200 rounded-xl">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-                  Total Principal
-                  <PopoverInfo 
-                    position="bottom" iconSize={12} iconClass="text-gray-400" 
-                    content="The total amount of your own money invested over the entire period, excluding any investment growth or returns." 
-                  />
-                </span>
-                <span className="text-sm font-bold text-gray-900">{formatCurrency(finalYear?.totalInvested || 0)}</span>
-              </div>
-
-              <div className="flex-shrink-0 flex flex-col justify-center px-4 py-1.5 bg-emerald-50/80 border border-emerald-100 rounded-xl">
-                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider flex items-center gap-1.5">
-                  Total Returns
-                  <PopoverInfo 
-                    position="bottom" iconSize={12} iconClass="text-emerald-400" 
-                    content="The total profit generated by the investments over the period through compound interest and market growth." 
-                  />
-                </span>
-                <span className="text-sm font-bold text-emerald-700">+{formatCurrency(finalYear?.totalReturns || 0)}</span>
-              </div>
-
-              {enableWithdrawal && (
-                <div className="flex-shrink-0 flex flex-col justify-center px-4 py-1.5 bg-red-50/80 border border-red-100 rounded-xl">
-                  <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider flex items-center gap-1.5">
-                    Total Withdrawn
-                    <PopoverInfo 
-                      position="bottom" iconSize={12} iconClass="text-red-400" 
-                      content="The sum of all standard withdrawals over the entire projection horizon." 
-                    />
-                  </span>
-                  <span className="text-sm font-bold text-red-600">-{formatCurrency(finalYear?.totalWithdrawn || 0)}</span>
-                </div>
-              )}
-
-              {enableZakat && (
-                <div className="flex-shrink-0 flex flex-col justify-center px-4 py-1.5 bg-amber-50/80 border border-amber-100 rounded-xl">
-                  <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider flex items-center gap-1.5">
-                    Total Zakat
-                    <PopoverInfo 
-                      position="bottom" iconSize={12} iconClass="text-amber-400" 
-                      content="The total cumulative Zakat deducted over the entire projection horizon." 
-                    />
-                  </span>
-                  <span className="text-sm font-bold text-amber-600">-{formatCurrency(finalYear?.totalZakatPaid || 0)}</span>
-                </div>
-              )}
-
-              {/* Export PDF Button */}
-              <button 
-                onClick={() => setShowPrintModal(true)} 
-                className="print:hidden flex-shrink-0 flex flex-col items-center justify-center px-4 py-1.5 bg-gray-50/80 border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-blue-600 transition-colors cursor-pointer"
-                title="Export PDF"
-              >
-                <Printer size={18} />
-              </button>
-            </div>
-
+              <Info size={20} />
+            </button>
+            <button
+              onClick={() => setShowPrintModal(true)}
+              className="p-2.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+              title="Export Report"
+            >
+              <Printer size={20} />
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col lg:flex-row gap-8 mt-2 print:block">
+      {/* Print Only Document Header - PAGE 1 */}
+      <div className="hidden print:block px-8 pt-8 pb-4 max-w-7xl mx-auto print-break-after">
+         <h1 className="text-4xl font-extrabold text-gray-900 mb-6 border-b-2 border-gray-900 pb-4">Wealth Projection Report</h1>
+         <div className="grid grid-cols-2 gap-6 text-sm mb-10 bg-gray-50 p-6 rounded-2xl border border-gray-200">
+           <div><span className="font-bold text-gray-500 uppercase tracking-wider text-xs">Prepared By</span><br/><span className="text-lg font-semibold text-gray-800">{printDetails.author || 'N/A'}</span></div>
+           <div><span className="font-bold text-gray-500 uppercase tracking-wider text-xs">Date</span><br/><span className="text-lg font-semibold text-gray-800">{printDetails.date}</span></div>
+           {printDetails.comments && <div className="col-span-2"><span className="font-bold text-gray-500 uppercase tracking-wider text-xs">Comments</span> <p className="mt-1 text-gray-800">{printDetails.comments}</p></div>}
+         </div>
+         
+         {/* Include Glossary directly on Page 1 for Print */}
+         <div>
+           <h2 className="text-2xl font-extrabold mb-6 text-gray-900">How It Works & Methodology</h2>
+           <GlossaryContent />
+         </div>
+      </div>
+
+      {/* KPI Dashboard Section (Mobile First Compact Grid) */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 print:pt-8 print:px-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          {/* Primary Balance Card */}
+          <div className="col-span-2 md:col-span-3 lg:col-span-2 bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-4 text-white shadow-md relative overflow-hidden flex flex-col justify-center min-h-[90px]">
+            <div className="relative z-10">
+              <div className="text-xs font-medium text-gray-300 flex items-center gap-1.5 mb-1">
+                Nominal Balance ({startYear + totalYears - 1})
+              </div>
+              <div className="text-2xl sm:text-3xl font-extrabold tracking-tight">{formatCurrency(finalYear?.endBalance || 0)}</div>
+            </div>
+            <TrendingUp className="absolute -bottom-4 -right-4 w-24 h-24 text-white opacity-5 pointer-events-none" />
+          </div>
+
+          {/* Total Principal */}
+          <div className="col-span-1 bg-white border border-gray-200/80 rounded-2xl p-3 shadow-sm flex flex-col justify-center min-h-[90px]">
+            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+              Total Principal
+            </div>
+            <div className="text-sm sm:text-base font-bold text-gray-900">{formatCurrency(finalYear?.totalInvested || 0)}</div>
+          </div>
+
+          {/* Total Returns */}
+          <div className="col-span-1 bg-white border border-emerald-200/60 rounded-2xl p-3 shadow-sm flex flex-col justify-center bg-emerald-50/30 min-h-[90px]">
+            <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">
+              Total Returns
+            </div>
+            <div className="text-sm sm:text-base font-bold text-emerald-700">+{formatCurrency(finalYear?.totalReturns || 0)}</div>
+          </div>
+
+          {/* Dynamic Optional Cards */}
+          {enableInflation && (
+            <div className="col-span-1 bg-white border border-purple-200/60 rounded-2xl p-3 shadow-sm flex flex-col justify-center bg-purple-50/30 min-h-[90px]">
+              <div className="text-[10px] font-bold text-purple-600 uppercase tracking-wider mb-1">
+                Real Balance
+              </div>
+              <div className="text-sm sm:text-base font-bold text-purple-900">{formatCurrency(finalYear?.realBalance || 0)}</div>
+            </div>
+          )}
+          {enableWithdrawal && (
+            <div className="col-span-1 bg-white border border-red-200/60 rounded-2xl p-3 shadow-sm flex flex-col justify-center bg-red-50/30 min-h-[90px]">
+              <div className="text-[10px] font-bold text-red-600 uppercase tracking-wider mb-1">
+                Total Withdrawn
+              </div>
+              <div className="text-sm sm:text-base font-bold text-red-700">-{formatCurrency(finalYear?.totalWithdrawn || 0)}</div>
+            </div>
+          )}
+          {enableZakat && (
+            <div className="col-span-1 bg-white border border-amber-200/60 rounded-2xl p-3 shadow-sm flex flex-col justify-center bg-amber-50/30 min-h-[90px]">
+              <div className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-1">
+                Total Zakat
+              </div>
+              <div className="text-sm sm:text-base font-bold text-amber-700">-{formatCurrency(finalYear?.totalZakatPaid || 0)}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-6 flex flex-col lg:flex-row gap-8 print:px-8 print:block">
         
         {/* Left Column: Controls */}
         <div className="w-full lg:w-[380px] flex-shrink-0 space-y-6 print:hidden">
           
           {/* Core Settings */}
-          {/* Using custom padding and borders to ensure the year picker popover is not hidden by overflow clips */}
           <Card className="!p-0 border-none bg-transparent shadow-none">
             <div className="p-6 bg-white border border-gray-200/80 shadow-sm rounded-3xl">
               <h2 className="text-lg font-bold mb-6 flex items-center gap-2.5 text-gray-800">
@@ -770,7 +845,6 @@ function FinanceCalculator() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label tooltip="The calendar year your projection begins.">Start Year</Label>
-                    {/* CUSTOM GRID YEAR PICKER */}
                     <YearPicker icon={CalendarDays} value={startYear} onChange={setStartYear} />
                   </div>
                   <div>
@@ -1113,14 +1187,23 @@ function FinanceCalculator() {
         </div>
 
         {/* Right Column: Visualizations & Data */}
-        <div className="flex-1 w-full space-y-6 print:w-full print:block">
+        <div className="flex-1 w-full space-y-6 print:w-full print:block print-break-after">
           
           {/* Interactive Chart */}
-          <Card className="h-[480px] flex flex-col border-gray-200/60 z-10 relative">
+          <Card className="h-[480px] flex flex-col border-gray-200/60 z-10 relative print:h-[500px] print:shadow-none print:border-none print:p-0 fullscreen-card" ref={chartRef}>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold text-gray-800">Wealth Trajectory</h2>
-              <div className="text-sm font-medium text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-                {startYear} - {startYear + totalYears - 1}
+              <div className="flex items-center gap-3">
+                <div className="text-sm font-medium text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                  {startYear} - {startYear + totalYears - 1}
+                </div>
+                <button 
+                  onClick={toggleFullScreen}
+                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors print:hidden"
+                  title="View Fullscreen Chart"
+                >
+                  <Maximize size={18} />
+                </button>
               </div>
             </div>
             <div className="flex-1 w-full min-h-0">
@@ -1172,8 +1255,8 @@ function FinanceCalculator() {
           </Card>
 
           {/* Detailed Data Table */}
-          <Card className="overflow-hidden p-0 !pb-0 border-gray-200/60 z-10 relative">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white print:px-0">
+          <Card className="overflow-hidden p-0 !pb-0 border-gray-200/60 z-10 relative print:shadow-none print:border-none print:p-0 print-break-before">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white print:px-0 print:pt-0">
               <h2 className="text-xl font-bold text-gray-800">Annual Breakdown</h2>
             </div>
             <div className="overflow-x-auto max-h-[500px] overflow-y-auto print:max-h-none print:overflow-visible">
@@ -1181,7 +1264,6 @@ function FinanceCalculator() {
                 <thead className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider bg-gray-100 sticky top-0 z-10 shadow-sm leading-tight print:bg-gray-100 border-b border-gray-200">
                   <tr>
                     <th className="px-2 sm:px-4 py-3 font-bold align-bottom">Year</th>
-                    <th className="px-2 sm:px-4 py-3 font-bold align-bottom">Start<br/>Balance</th>
                     <th className="px-2 sm:px-4 py-3 font-bold text-blue-600 align-bottom">Invest</th>
                     {enableEvents && <th className="px-2 sm:px-4 py-3 font-bold text-purple-600 align-bottom">Events</th>}
                     {enableWithdrawal && <th className="px-2 sm:px-4 py-3 font-bold text-red-500 align-bottom">With-<br/>drawals</th>}
@@ -1210,7 +1292,6 @@ function FinanceCalculator() {
                             <div className="text-[10px] sm:text-xs text-gray-400">Year {row.year}</div>
                           </div>
                         </td>
-                        <td className="px-2 sm:px-4 py-3 font-medium text-gray-600 whitespace-nowrap">{formatCurrency(row.startingBalance)}</td>
                         <td className="px-2 sm:px-4 py-3 font-semibold text-blue-600 whitespace-nowrap">{row.contribution > 0 ? `+${formatCurrency(row.contribution)}` : '-'}</td>
                         
                         {enableEvents && (
@@ -1243,7 +1324,7 @@ function FinanceCalculator() {
                       
                       {isExpanded && compoundingFrequency === 'monthly' && (
                         <tr className="bg-gray-50/80 shadow-inner print:bg-white print:shadow-none print:break-inside-avoid">
-                          <td colSpan={10} className="p-0 border-b border-gray-300">
+                          <td colSpan={9} className="p-0 border-b border-gray-300">
                             <div className="py-4 px-3 sm:px-6 md:px-10 lg:px-14 print:px-6 print:py-6">
                               <h4 className="text-xs sm:text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
                                 <CalendarDays size={16} className="text-blue-500 print:text-gray-600" />
@@ -1254,7 +1335,6 @@ function FinanceCalculator() {
                                   <thead className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider bg-gray-100 leading-tight">
                                     <tr>
                                       <th className="px-2 sm:px-4 py-2 font-bold align-bottom whitespace-nowrap">Month</th>
-                                      <th className="px-2 sm:px-4 py-2 font-bold align-bottom">Start<br/>Balance</th>
                                       <th className="px-2 sm:px-4 py-2 font-bold text-blue-600 align-bottom">Invest</th>
                                       {enableEvents && <th className="px-2 sm:px-4 py-2 font-bold text-purple-600 align-bottom">Events</th>}
                                       {enableWithdrawal && <th className="px-2 sm:px-4 py-2 font-bold text-red-500 align-bottom">With-<br/>drawals</th>}
@@ -1267,7 +1347,6 @@ function FinanceCalculator() {
                                     {row.monthlyData.map(m => (
                                       <tr key={m.month} className="hover:bg-blue-50/30 transition-colors">
                                         <td className="px-2 sm:px-4 py-2 font-bold text-gray-900 whitespace-nowrap">{MONTH_NAMES[m.month - 1]} {row.calendarYear}</td>
-                                        <td className="px-2 sm:px-4 py-2 font-medium text-gray-600 whitespace-nowrap">{formatCurrency(m.startBalance)}</td>
                                         <td className="px-2 sm:px-4 py-2 font-semibold text-blue-600 whitespace-nowrap">
                                           {m.invest > 0 ? `+${formatCurrency(m.invest)}` : <span className="text-blue-300 font-medium">-</span>}
                                         </td>
@@ -1309,9 +1388,9 @@ function FinanceCalculator() {
         </div>
       </main>
 
-      {/* Page 2 - Print Only Assumptions & Methodologies */}
-      <div className="hidden print:block print:break-before-page p-8 max-w-7xl mx-auto mt-10">
-        <h2 className="text-2xl font-extrabold mb-8 text-gray-900 border-b-2 border-gray-800 pb-4">Report Assumptions & Methodologies</h2>
+      {/* Page Last - Print Only Assumptions */}
+      <div className="hidden print:block print-break-before p-8 max-w-7xl mx-auto">
+        <h2 className="text-2xl font-extrabold mb-8 text-gray-900 border-b-2 border-gray-800 pb-4">Report Assumptions</h2>
         
         <div className="grid grid-cols-2 gap-y-6 gap-x-12 text-sm text-gray-800">
           <div><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Initial Capital</strong> <span className="text-lg font-semibold">{formatCurrency(initialCapital)}</span></div>
@@ -1334,20 +1413,31 @@ function FinanceCalculator() {
           {enableWithdrawal && <div className="col-span-2"><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Withdrawal Phase</strong> <span className="text-lg font-semibold">Commencing {withdrawalTimingType === 'index' ? `Year ${withdrawalStartYearIndex}` : withdrawalStartCalYear} at {withdrawalValue}{withdrawalType === 'percent' ? '%' : '₹'} annually</span></div>}
         </div>
 
-        <h3 className="text-xl font-bold mb-4 mt-12 text-gray-900 border-b border-gray-300 pb-2">Terminology Definitions</h3>
-        <div className="grid grid-cols-2 gap-y-6 gap-x-12 text-sm text-gray-800">
-          <div><strong className="block text-gray-900 mb-1">Total Principal</strong> <span className="text-gray-700">The total amount of your own money invested over the entire period, excluding any investment growth or returns.</span></div>
-          <div><strong className="block text-gray-900 mb-1">Total Returns</strong> <span className="text-gray-700">The total profit generated by the investments over the period through compound interest and market growth.</span></div>
-          {enableWithdrawal && <div><strong className="block text-gray-900 mb-1">Total Withdrawn</strong> <span className="text-gray-700">The sum of all standard withdrawals over the entire projection horizon.</span></div>}
-          {enableZakat && <div><strong className="block text-gray-900 mb-1">Total Zakat Paid</strong> <span className="text-gray-700">The total cumulative Zakat deducted over the entire projection horizon.</span></div>}
-          <div><strong className="block text-gray-900 mb-1">Nominal Balance</strong> <span className="text-gray-700">The actual, unadjusted monetary value of your portfolio at the end of the specified period, without accounting for inflation.</span></div>
-          {enableInflation && <div><strong className="block text-gray-900 mb-1">Real Balance</strong> <span className="text-gray-700">The inflation-adjusted value of your portfolio, representing its true purchasing power in today's money.</span></div>}
-        </div>
-
         <div className="mt-16 p-6 bg-gray-50 rounded-2xl border border-gray-200 text-center text-gray-600 font-medium">
            Prepared by Zaid using A.I., for any bug please contact <a href="mailto:zaidshaikh@msn.com" className="text-blue-600 underline">zaidshaikh@msn.com</a>
         </div>
       </div>
+
+      {/* Modal for How it Works / Glossary (Fullscreen) */}
+      {showInfoModal && (
+        <div className="fixed inset-0 bg-white z-[100] flex flex-col animate-in fade-in zoom-in-95 duration-200 print:hidden">
+          {/* Header */}
+          <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10 shadow-sm">
+            <h3 className="text-xl font-bold flex items-center gap-2 text-gray-900">
+              <Info size={24} className="text-blue-600" /> How It Works & Glossary
+            </h3>
+            <button onClick={() => setShowInfoModal(false)} className="p-2 text-gray-400 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-full transition-colors flex items-center gap-2">
+              <span className="text-sm font-semibold hidden sm:block pr-1">Close</span>
+              <X size={20} />
+            </button>
+          </div>
+          
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-6 md:p-10 max-w-4xl mx-auto w-full">
+             <GlossaryContent />
+          </div>
+        </div>
+      )}
 
       {/* Modal for Export Settings */}
       {showPrintModal && (
