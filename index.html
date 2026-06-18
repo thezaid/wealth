@@ -33,7 +33,7 @@
     body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
     * { box-sizing: border-box; }
     @media print {
-      @page { size: A4 landscape; margin: 10mm; }
+      @page { size: auto; margin: 12mm; }
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>
@@ -159,11 +159,11 @@ const PopoverInfo = ({ content, position = 'top', iconSize = 14, iconClass = "te
   );
 };
 
-const Card = ({ children, className = '' }) => (
-  <div className={`bg-white/80 backdrop-blur-xl border border-gray-200/80 shadow-sm rounded-3xl p-6 ${className}`}>
+const Card = React.forwardRef(({ children, className = '' }, ref) => (
+  <div ref={ref} className={`bg-white/80 backdrop-blur-xl border border-gray-200/80 shadow-sm rounded-3xl p-6 ${className}`}>
     {children}
   </div>
-);
+));
 
 const Label = ({ children, tooltip }) => (
   <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-gray-700">
@@ -222,6 +222,10 @@ const GlossaryContent = () => (
         <strong className="text-red-500 block text-base mb-1">Withdrawals & Events</strong>
         Standard withdrawals are taken out <strong>BEFORE</strong> the year's growth is applied (simulating funds needed for living expenses). One-off cash events (like buying a car or receiving inheritance) are applied at the beginning of their respective year or month.
       </div>
+    </section>
+
+    <section className="mt-10 p-5 bg-blue-50/50 rounded-2xl border border-blue-100/50 text-center text-gray-600 font-medium text-sm">
+       Prepared by Zaid using A.I., for any bug please contact <a href="mailto:zaidshaikh@msn.com" className="text-blue-600 hover:text-blue-800 underline transition-colors">zaidshaikh@msn.com</a>
     </section>
   </div>
 );
@@ -709,6 +713,7 @@ function FinanceCalculator() {
       <style>
         {`@import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap');
           @media print {
+            @page { size: auto; margin: 15mm; }
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background-color: white !important; }
             ::-webkit-scrollbar { display: none; }
             .print-break-after { page-break-after: always; break-after: page; }
@@ -1258,7 +1263,7 @@ function FinanceCalculator() {
           </Card>
 
           {/* Detailed Data Table */}
-          <Card className="overflow-hidden p-0 !pb-0 border-gray-200/60 z-10 relative print:shadow-none print:border-none print:p-0 print-break-before">
+          <Card className="overflow-hidden print:overflow-visible p-0 !pb-0 border-gray-200/60 z-10 relative print:shadow-none print:border-none print:p-0 print-break-before">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white print:px-0 print:pt-0">
               <h2 className="text-xl font-bold text-gray-800">Annual Breakdown</h2>
             </div>
@@ -1414,10 +1419,6 @@ function FinanceCalculator() {
           {enableZakat && <div><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Zakat Rate</strong> <span className="text-lg font-semibold">{zakatRate}% deducted annually</span></div>}
           
           {enableWithdrawal && <div className="col-span-2"><strong className="block text-gray-500 uppercase tracking-wider text-xs mb-1">Withdrawal Phase</strong> <span className="text-lg font-semibold">Commencing {withdrawalTimingType === 'index' ? `Year ${withdrawalStartYearIndex}` : withdrawalStartCalYear} at {withdrawalValue}{withdrawalType === 'percent' ? '%' : '₹'} annually</span></div>}
-        </div>
-
-        <div className="mt-16 p-6 bg-gray-50 rounded-2xl border border-gray-200 text-center text-gray-600 font-medium">
-           Prepared by Zaid using A.I., for any bug please contact <a href="mailto:zaidshaikh@msn.com" className="text-blue-600 underline">zaidshaikh@msn.com</a>
         </div>
       </div>
 
